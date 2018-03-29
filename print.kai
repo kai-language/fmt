@@ -1,0 +1,134 @@
+
+#import kai("os")
+#import kai("arrays")
+#import builtin("types")
+
+Fmt :: struct {
+    buf: *[]u8
+
+    width: i64
+    precision: i64
+}
+
+fmtU :: fn(buf: *[]u8, x: u64, base: u64) -> void {
+    MAX_LEN :: 64
+    out := ([MAX_LEN]u8{})[:]
+    out.len = 0
+
+    i := MAX_LEN - 1
+    zero : u8 = "0"
+    for x > 0 {
+        out[i] = zero + cast(u8) (x % base)
+        x /= base
+        i -= 1
+    }
+    out = out[i+1:]
+    out.len = MAX_LEN - 1 - i
+    arrays.AppendContents(buf, out)
+}
+
+fmtValue :: fn(f: Fmt, buf: *[]u8, val: any) -> void {
+    switch val.type binding type {
+    case Simple:
+        switch type {
+        case Integer:
+            accumulator: u64 = 0
+            for offset := 0; offset < type.Width; offset += 8 {
+                byte := val.data[offset / 8]
+                accumulator |= cast(u64) byte << offset
+            }
+
+            signMask := (1 << (cast(u64) type.Width - 1))
+            if type.Flags & cast(u8) types.FlagSigned != 0 && (accumulator & signMask != 0) {
+                accumulator = ~accumulator + 1
+                arrays.Reserve(buf, buf.len + 1)
+                (<buf)[buf.len] = "-"
+                buf.len += 1
+            }
+
+            fmtU(buf, accumulator, base: 10)
+
+        case Boolean:
+            accumulator: u64 = 0
+            for offset := 0; offset < type.Width; offset += 8 {
+                byte := val.data[offset / 8]
+                accumulator |= cast(u64) byte << offset
+            }
+
+            if accumulator != 0 arrays.AppendContents(buf, "true")
+            else                arrays.AppendContents(buf, "false")
+
+        case Float: break
+        case Any:
+            assert(false)
+        case Void:
+            assert(false)
+        }
+        case Array: break
+        case Slice:
+            if type.Flags & types.FlagString != 0 {
+                slice := <(bitcast(*[]u8) val.data)
+                arrays.AppendContents(buf, slice)
+            }
+        case Pointer:
+            ptr: u64 = <(bitcast(*u64) val.data)
+            arrays.AppendContents(buf, "0x")
+            fmtU(buf, ptr, base: 16)
+        case Function: break
+        case Struct: break
+        case Union: break
+        case Enum: break
+    }
+}
+
+BPrintf :: fn(buf: *[]u8, format: string, args: ..any) -> void {
+    arrays.Reserve(buf, format.len)
+
+    argIndex := 0
+
+    for i := 0; i < format.len; argIndex += 1 {
+        lasti := i
+        // skip until we see a %
+        for i < format.len && format[i] != "%" {
+            i += 1
+        }
+        // Append everything between the last % byte and this % byte
+        if i > lasti {
+            arrays.AppendContents(buf, format[lasti:i])
+        }
+        if i >= format.len {
+            // finished processing format string
+            break
+        }
+
+        // Process a verb
+        i += 1
+
+        if format[i] == "%" {
+            arrays.Append(buf, "%")
+            continue
+        }
+
+        // TODO: Here is where we would parse any options & verbs (%2f)
+        fmt := Fmt{}
+        fmtValue(fmt, buf, args[argIndex])
+    }
+}
+
+Printf :: fn(format: string, args: ..any) -> void {
+    buf := []u8{}
+    BPrintf(&buf, format, ..args)
+    os.Write(os.Stdout, buf)
+}
+
+#test "Printf" {
+    TAU :: 6.28318530717958647692528676655900576
+    Printf("It is % that tau day is on % / %. That is the %. Remember tau is %\n", true, 14, 3, "14th of March", TAU)
+}
+
+#test "BPrintf" {
+    buf := []u8{}
+    BPrintf(&buf, "%\n", 4)
+    assert(buf.len == 2)
+    assert(buf[0] == "4")
+}
