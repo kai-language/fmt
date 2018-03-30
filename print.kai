@@ -294,27 +294,6 @@ Printf :: fn(format: string, args: ..any) -> void {
     os.Write(os.Stdout, buf)
 }
 
-/* #test "Printf" {
-    TAU :: 6.28318530717958647692528676655900576
-    Printf("It is % that tau day is on % / %. That is the %. Remember tau is %\n", true, 14, 3, "14th of March", TAU)
-
-    array := [..]u16{1,2,3,4,65535}
-    Printf("array: %\n", array)
-
-    slice := []u16{1,2,3,4,65535}
-    Printf("slice: %\n", slice)
-
-    /* A := struct{a: u8}
-    a := A{}
-    Printf("struct: %\n", a) */
-
-    /* B := union{a: u8}
-    Printf("union: %\n", B{a:0}) */
-
-    /* C :: enum{a; b}
-    Printf("enum: %\n", C.a) */
-} */
-
 #test "BPrintf unsigned integer" {
     reset :: fn(buf: *[]u8) -> void {
         buf.len = 0
