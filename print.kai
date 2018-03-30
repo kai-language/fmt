@@ -2,6 +2,7 @@
 #import kai("os")
 #import kai("arrays")
 #import builtin("types")
+#import kai("math")
 
 Fmt :: struct {
     buf: *[]u8
@@ -24,6 +25,55 @@ fmtU :: fn(buf: *[]u8, x: u64, base: u64) -> void {
     }
     out = out[i+1:]
     out.len = MAX_LEN - 1 - i
+    arrays.AppendContents(buf, out)
+}
+
+fmtPtr :: fn(buf: *[]u8, x: u64) -> void {
+    arrays.AppendContents(buf, "0x")
+    fmtU(buf, x, base: 16)
+}
+
+// Derived from the naive example at ryanjuckett.com/programming/printing-floating-point-numbers
+fmtFloat :: fn(buf: *[]u8, value: f64) -> void {
+    using math
+
+    MAX_DIGITS :: 10
+
+    decimalDigits := [MAX_DIGITS]u8{}               // buffer to put the decimal representation in
+    numDigits := 0                                  // this will be set to the number of digits in the buffer
+
+    // Compute the first digit's exponent in the equation digit*10^exponent
+    // (e.g. 122.5 would compute a 2 because its first digit is in the hundreds place)
+    firstDigitExponent := floor_64(log10_64(value))
+
+    // Scale the input value such that the first digit is in the ones place
+    // (e.g. 122.5 would become 1.225).
+    value = value / pow_64(10, firstDigitExponent)
+
+    // while there is a non-zero value to print and we have room in the buffer
+    for value > 0.0 && numDigits < MAX_DIGITS {
+        // Output the current digit.
+        digit := cast(u8) floor_64(value)
+        decimalDigits[numDigits] = "0" + digit // convert to an ASCII character
+        numDigits += 1
+
+        // Compute the remainder by subtracting the current digit
+        // (e.g. 1.225 would becom 0.225)
+        value -= cast(f64) digit
+
+        // Scale the next digit into the ones place.
+        // (e.g. 0.225 would becom 2.25)
+        value *= 10.0
+
+        if numDigits == firstDigitExponent + 1 {
+            decimalDigits[numDigits] = "."
+            numDigits += 1
+        }
+    }
+
+    out := decimalDigits[:]
+    out.len = numDigits
+
     arrays.AppendContents(buf, out)
 }
 
@@ -58,11 +108,20 @@ fmtValue :: fn(f: Fmt, buf: *[]u8, val: any) -> void {
             if accumulator != 0 arrays.AppendContents(buf, "true")
             else                arrays.AppendContents(buf, "false")
 
-        case Float: break
+        case Float:
+            x: f64 = 0
+            if type.Width == 64 {
+                x = <(bitcast(*f64) val.data)
+            } else if type.Width == 32 {
+                x = cast(f64) <(bitcast(*f32) val.data)
+            } else panic("Unsupported Floating point width")
+
+            fmtFloat(buf, x)
+
         case Any:
-            assert(false)
+            panic()
         case Void:
-            assert(false)
+            panic()
         }
         case Array: break
         case Slice:
@@ -71,9 +130,7 @@ fmtValue :: fn(f: Fmt, buf: *[]u8, val: any) -> void {
                 arrays.AppendContents(buf, slice)
             }
         case Pointer:
-            ptr: u64 = <(bitcast(*u64) val.data)
-            arrays.AppendContents(buf, "0x")
-            fmtU(buf, ptr, base: 16)
+            fmtPtr(buf, <(bitcast(*u64) val.data))
         case Function: break
         case Struct: break
         case Union: break
